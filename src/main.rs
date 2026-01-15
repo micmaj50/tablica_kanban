@@ -52,7 +52,7 @@ impl Default for KanbanApp {
 }
 
 impl eframe::App for KanbanApp {
-    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
             // --- NAGŁÓWEK ---
             ui.heading("Aplikacja Kanban");
@@ -101,44 +101,56 @@ impl eframe::App for KanbanApp {
                 for (i, status) in stany.iter().enumerate() {
                     let ui_col = &mut kolumny[i]; // Bierzemy referencję do konkretnej kolumny UI
                     
-                    ui_col.heading(tytuly[i]);
-                    ui_col.separator();
+                    // Definiujemy wygląd ramki kolumny
+                    let frame = egui::Frame::group(ui_col.style())
+                        .inner_margin(5.0)
+                        .fill(ui_col.visuals().faint_bg_color); // Lekkie tło dla kolumny
 
-                    // Filtrowanie i wyświetlanie zadań dla danej kolumny
-                    for zadanie in self.lista_zadan.iter().filter(|z| z.status == *status) {
-                        ui_col.group(|ui| {
-                            ui.label(format!("#{} {}", zadanie.id, zadanie.tresc));
-                            
-                            ui.horizontal(|ui| {
-                                // Logika przycisków "Przesuń"
-                                match status {
-                                    Status::DoZrobienia => {
-                                        if ui.button("➡️").clicked() {
-                                            akcje.push(Akcja::ZmienStatus(zadanie.id, Status::WTrakcie));
-                                        }
-                                    },
-                                    Status::WTrakcie => {
-                                        if ui.button("⬅️").clicked() {
-                                            akcje.push(Akcja::ZmienStatus(zadanie.id, Status::DoZrobienia));
-                                        }
-                                        if ui.button("➡️").clicked() {
-                                            akcje.push(Akcja::ZmienStatus(zadanie.id, Status::Zrobione));
-                                        }
-                                    },
-                                    Status::Zrobione => {
-                                        if ui.button("⬅️").clicked() {
-                                            akcje.push(Akcja::ZmienStatus(zadanie.id, Status::WTrakcie));
-                                        }
-                                    }
-                                }
+                    // Tworzymy funkcję rysującą kontener, który wykrywa, czy coś na niego upuszczamy.
+                    // <usize> oznacza, że oczekujemy, iż spadnie tu liczba (ID zadania).
+                    let response = ui_col.dnd_drop_zone::<usize, _>(frame, |ui| {
+                        
+                        ui.heading(tytuly[i]);
+                        ui.separator();
 
-                                // Przycisk usuwania (czerwony)
-                                if ui.add(egui::Button::new("🗑").fill(egui::Color32::DARK_RED)).clicked() {
-                                    akcje.push(Akcja::Usun(zadanie.id));
-                                }
+                        // Filtrowanie zadań dla tej kolumny. Zbieramy je w nową kolekcję
+                        let zadania_w_kolumnie: Vec<&Zadanie> = self.lista_zadan
+                            .iter()
+                            .filter(|z| z.status == *status)
+                            .collect();
+
+                        for zadanie in zadania_w_kolumnie {
+                            // Generujemy unikalne ID dla UI (wymagane przez egui)
+                            let item_id = egui::Id::new("task").with(zadanie.id);
+
+                            // Tworzymy ELEMENT PRZESUWNY
+                            // item_id = ID elementu UI
+                            // zadanie.id = Payload (to co niesiemy, czyli ID z bazy danych)
+                            ui.dnd_drag_source(item_id, zadanie.id, |ui| {
+                                // Wygląd pojedynczego kafelka
+                                ui.group(|ui| {
+                                    ui.horizontal(|ui| {
+                                        ui.label("::"); // Uchwyt do łapania (estetyka)
+                                        ui.label(&zadanie.tresc);
+                                        
+                                        // Przycisk usuwania (czerwony)
+                                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                            if ui.small_button("🗑").clicked() {
+                                                akcje.push(Akcja::Usun(zadanie.id));
+                                            }
+                                        });
+                                    });
+                                });
                             });
-                        });
-                        ui_col.add_space(5.0);
+                            ui.add_space(5.0);
+                        }
+                    });
+
+                    // Obsługa UPUSZCZENIA
+                    // Sprawdzamy, czy w tej klatce coś spadło na tę kolumnę
+                    if let Some(upuszczone_id) = response.1 {
+                        // Jeśli tak, dodajemy akcję zmiany statusu!
+                        akcje.push(Akcja::ZmienStatus(*upuszczone_id, *status));
                     }
                 }
             });
