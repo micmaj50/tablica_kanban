@@ -146,27 +146,26 @@ impl eframe::App for KanbanApp {
                                                             egui::RichText::new(&zadanie.tresc)
                                                                 .color(egui::Color32::BLACK),
                                                         );
-                                                        ui.with_layout(
-                                                            egui::Layout::right_to_left(
-                                                                egui::Align::Center,
-                                                            ),
-                                                            |ui| {
-                                                                if ui.button(
-                                                                        egui::RichText::new("Usuń").color(egui::Color32::BLACK),
-                                                                    )
-                                                                    .clicked() {
-                                                                    akcje.push(Akcja::Usun(
-                                                                        zadanie.id,
-                                                                    ));
-                                                                }
-                                                            },
-                                                        );
+                                                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                                        if ui.add(
+                                                            egui::Button::new(
+                                                                egui::RichText::new("Usuń")
+                                                                    .size(12.0)
+                                                                    .color(egui::Color32::BLACK)
+                                                            )
+                                                            .fill(egui::Color32::from_gray(230))
+                                                            .min_size(egui::vec2(40.0, 20.0))
+                                                            .corner_radius(4.0)
+                                                        ).clicked() {
+                                                            akcje.push(Akcja::Usun(zadanie.id));
+                                                        }
                                                     });
                                                 });
+                                            });
                                         });
                                         ui.add_space(8.0); // Odstęp między kafelkami
                                     }
-                                    // Rozpychacz, żeby drop zone działał na całą wysokość kolumny, nawet jak jest pusta
+                                    // Rezerwacja przestrzeni dla Drop Zone
                                     ui.allocate_space(ui.available_size());
                                 });
 
@@ -178,9 +177,7 @@ impl eframe::App for KanbanApp {
             });
         });
 
-        // ---------------------------------------------------------
-        // 3. LOGIKA (Aplikowanie zmian)
-        // ---------------------------------------------------------
+        // Wykonanie zebranych akcji
         for akcja in akcje {
             match akcja {
                 Akcja::DodajNowe => {
