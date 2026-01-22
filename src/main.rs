@@ -51,7 +51,6 @@ impl eframe::App for KanbanApp {
                 // Sekcja: Nowe Zadanie
                 ui.group(|ui| {
                     ui.label("Nowe zadanie:");
-                    // TODO: KOLOR - Tu możesz potem zmienić tło inputu
                     let input = ui.text_edit_singleline(&mut self.tresc_zadania);
                     ui.add_space(5.0);
 
@@ -80,7 +79,6 @@ impl eframe::App for KanbanApp {
                 // Sekcja: Przycisk wyjścia
                 ui.with_layout(egui::Layout::bottom_up(egui::Align::Center), |ui| {
                     ui.add_space(20.0);
-                    // TODO: KOLOR - Tu będziesz mógł nadać przyciskowi inny kolor (np. czerwony)
                     if ui
                         .add_sized(
                             [ui.available_width(), 40.0],
@@ -153,8 +151,10 @@ impl eframe::App for KanbanApp {
                                                                 egui::Align::Center,
                                                             ),
                                                             |ui| {
-                                                                if ui.small_button("🗑").clicked()
-                                                                {
+                                                                if ui.button(
+                                                                        egui::RichText::new("Usuń").color(egui::Color32::BLACK),
+                                                                    )
+                                                                    .clicked() {
                                                                     akcje.push(Akcja::Usun(
                                                                         zadanie.id,
                                                                     ));
@@ -211,7 +211,6 @@ fn main() -> eframe::Result<()> {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([900.0, 600.0]) // Startowy rozmiar okna
             .with_active(true),
-        //.with_corner_radius(10),
         ..Default::default()
     };
 
