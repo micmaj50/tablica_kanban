@@ -1,14 +1,10 @@
 use eframe::egui;
 
-/// Reprezentuje możliwe statusy zadania w cyklu życia (workflow).
-/// Odpowiada kolumnom na tablicy Kanban.
+/// Reprezentuje możliwe statusy zadania w cyklu życia
 #[derive(Clone, Copy, PartialEq, Debug)]
 enum Status {
-    /// Zadanie oczekujące na realizację.
     DoZrobienia,
-    /// Zadanie aktualnie wykonywane.
     WTrakcie,
-    /// Zadanie zakończone.
     Zrobione,
 }
 
@@ -16,163 +12,196 @@ enum Status {
 struct Zadanie {
     /// Unikalny identyfikator, kluczowy dla Drag&Drop.
     id: usize,
-    /// Treść/opis zadania wprowadzony przez użytkownika.
     tresc: String,
-    /// Aktualny stan zadania (przypisanie do kolumny).
     status: Status,
 }
 
 /// Bufor Akcji.
 enum Akcja {
-    /// Usunięcie zadania o podanym ID.
     Usun(usize),
-    /// Zmiana statusu zadania (np. przesunięcie do innej kolumny).
     ZmienStatus(usize, Status),
+    DodajNowe,
 }
 
 /// Główny stan aplikacji Kanban.
-/// Przechowuje wszystkie dane i konfigurację widoku.
+#[derive(Default)]
 struct KanbanApp {
-    /// Bufor tekstowy dla pola wprowadzania nowego zadania.
     tresc_zadania: String,
-    /// Wektor przechowywujący wszystkie zadania (niezależnie od statusu).
     lista_zadan: Vec<Zadanie>,
-    /// Licznik służący do generowania unikalnych ID (auto-increment).
     next_id: usize,
-}
-
-impl Default for KanbanApp {
-    fn default() -> Self {
-        Self {
-            tresc_zadania: String::new(),
-            lista_zadan: Vec::new(),
-            next_id: 0,
-        }
-    }
 }
 
 impl eframe::App for KanbanApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        egui::CentralPanel::default().show(ctx, |ui| {
-            // --- NAGŁÓWEK ---
-            ui.heading("Aplikacja Kanban");
-            ui.separator();
+        // Styl globalny - ciemny motyw
+        ctx.set_visuals(egui::Visuals::dark());
 
-            // --- DODAWANIE ZADANIA ---
-            ui.horizontal(|ui| {
-                ui.label("Dodaj zadanie: ");
-                // Input pola tekstowego powiązany ze zmienną w structurze
-                let input = ui.text_edit_singleline(&mut self.tresc_zadania);
+        // Kolejka akcji do wykonania PO narysowaniu klatki
+        let mut akcje: Vec<Akcja> = Vec::new();
 
-                // Wykrywanie intencji użytkownika (wciśnięcie Enter lub kliknięcie przycisku)
-                let enter_pressed = input.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-                let button_clicked = ui.button("Dodaj").clicked();
+        // Panel boczny
+        egui::SidePanel::left("lewy_panel")
+            .resizable(false) // Blokada zmiany szerokości
+            .exact_width(200.0)
+            .show(ctx, |ui| {
+                ui.add_space(20.0); // Margines od góry
+                ui.heading("Menu");
+                ui.add_space(20.0);
 
-                // Walidacja i dodawanie nowego zadania
-                if (button_clicked || enter_pressed) && !self.tresc_zadania.is_empty() {
-                    self.lista_zadan.push(Zadanie {
-                        id: self.next_id,
-                        tresc: self.tresc_zadania.clone(),
-                        status: Status::DoZrobienia, // Domyślnie wpada do pierwszej kolumny
-                    });
+                // Sekcja: Nowe Zadanie
+                ui.group(|ui| {
+                    ui.label("Nowe zadanie:");
+                    // TODO: KOLOR - Tu możesz potem zmienić tło inputu
+                    let input = ui.text_edit_singleline(&mut self.tresc_zadania);
+                    ui.add_space(5.0);
 
-                    // Reset stanu inputu
-                    self.next_id += 1;
-                    self.tresc_zadania.clear();
+                    // Przycisk rozciągnięty na całą szerokość panelu
+                    let btn = ui.add_sized(
+                        [ui.available_width(), 30.0],
+                        egui::Button::new(
+                            egui::RichText::new("Dodaj Task")
+                                .color(egui::Color32::BLACK)
+                                .strong(),
+                        )
+                        .fill(egui::Color32::from_rgb(100, 149, 237))
+                        .min_size(egui::vec2(0.0, 30.0)),
+                    );
 
-                    // Utrzymanie focusa na polu tekstowym dla seryjnego dodawania
-                    input.request_focus(); 
-                }
+                    if (btn.clicked()
+                        || (input.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter))))
+                        && !self.tresc_zadania.is_empty()
+                    {
+                        akcje.push(Akcja::DodajNowe);
+                        // Utrzymanie focusa
+                        input.request_focus();
+                    }
+                });
+
+                // Sekcja: Przycisk wyjścia
+                ui.with_layout(egui::Layout::bottom_up(egui::Align::Center), |ui| {
+                    ui.add_space(20.0);
+                    // TODO: KOLOR - Tu będziesz mógł nadać przyciskowi inny kolor (np. czerwony)
+                    if ui
+                        .add_sized(
+                            [ui.available_width(), 40.0],
+                            egui::Button::new("Quit").fill(egui::Color32::from_rgb(180, 40, 40)),
+                        )
+                        .clicked()
+                    {
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                    }
+                });
             });
+
+        // Panel centralny
+        egui::CentralPanel::default().show(ctx, |ui| {
             ui.add_space(10.0);
+            ui.heading("Kanban Board");
             ui.separator();
+            ui.add_space(20.0);
 
-            // --- BUFOR AKCJI ---
-            // Zbieramy tutaj co użytkownik klika, żeby zmienić to PO narysowaniu UI.
-            let mut akcje: Vec<Akcja> = Vec::new();            
-
-            // --- KOLUMNY KANBAN ---
-            // Dzielimy ekran na 3 równe części
+            // Podział ekranu na 3 kolumny
             ui.columns(3, |kolumny| {
-                // Iterujemy po naszych statusach i przypisujemy im kolumnę UI
                 let stany = [Status::DoZrobienia, Status::WTrakcie, Status::Zrobione];
                 let tytuly = ["Do Zrobienia", "W Trakcie", "Zrobione"];
 
                 for (i, status) in stany.iter().enumerate() {
-                    let ui_col = &mut kolumny[i]; // Bierzemy referencję do konkretnej kolumny UI
-                    
-                    // Definiujemy wygląd ramki kolumny
-                    let frame = egui::Frame::group(ui_col.style())
-                        .inner_margin(5.0)
-                        .fill(ui_col.visuals().faint_bg_color); // Lekkie tło dla kolumny
+                    let ui_col = &mut kolumny[i];
 
-                    // Tworzymy funkcję rysującą kontener, który wykrywa, czy coś na niego upuszczamy.
-                    // <usize> oznacza, że oczekujemy, iż spadnie tu liczba (ID zadania).
-                    let response = ui_col.dnd_drop_zone::<usize, _>(frame, |ui| {
-                        
-                        ui.heading(tytuly[i]);
-                        ui.separator();
-
-                        // Filtrowanie zadań dla tej kolumny. Zbieramy je w nową kolekcję
-                        let zadania_w_kolumnie: Vec<&Zadanie> = self.lista_zadan
-                            .iter()
-                            .filter(|z| z.status == *status)
-                            .collect();
-
-                        for zadanie in zadania_w_kolumnie {
-                            // Generujemy unikalne ID dla UI (wymagane przez egui)
-                            let item_id = egui::Id::new("task").with(zadanie.id);
-
-                            // Tworzymy ELEMENT PRZESUWNY
-                            // item_id = ID elementu UI
-                            // zadanie.id = Payload (to co niesiemy, czyli ID z bazy danych)
-                            ui.dnd_drag_source(item_id, zadanie.id, |ui| {
-                                // Wygląd pojedynczego kafelka
-                                ui.group(|ui| {
-                                    ui.horizontal(|ui| {
-                                        ui.label("::"); // Uchwyt do łapania (estetyka)
-                                        ui.label(&zadanie.tresc);
-                                        
-                                        // Przycisk usuwania (czerwony)
-                                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                            if ui.small_button("🗑").clicked() {
-                                                akcje.push(Akcja::Usun(zadanie.id));
-                                            }
-                                        });
-                                    });
-                                });
+                    // Ramka dla kolumny
+                    egui::Frame::group(ui_col.style())
+                        .fill(egui::Color32::TRANSPARENT)
+                        .corner_radius(10) // Zaokrąglenie rogów kolumny
+                        .inner_margin(10.0)
+                        .show(ui_col, |ui| {
+                            // Nagłówek kolumny
+                            ui.vertical_centered(|ui| {
+                                ui.heading(tytuly[i]);
                             });
-                            ui.add_space(5.0);
-                        }
-                    });
+                            ui.add_space(10.0);
+                            ui.separator();
+                            ui.add_space(10.0);
 
-                    // Obsługa UPUSZCZENIA
-                    // Sprawdzamy, czy w tej klatce coś spadło na tę kolumnę
-                    if let Some(upuszczone_id) = response.1 {
-                        // Jeśli tak, dodajemy akcję zmiany statusu!
-                        akcje.push(Akcja::ZmienStatus(*upuszczone_id, *status));
-                    }
+                            // --- STREFA DROP ZONE ---
+                            let (_, payload) =
+                                ui.dnd_drop_zone::<usize, _>(egui::Frame::NONE, |ui| {
+                                    // Filtrujemy zadania
+                                    let zadania_w_kolumnie: Vec<&Zadanie> = self
+                                        .lista_zadan
+                                        .iter()
+                                        .filter(|z| z.status == *status)
+                                        .collect();
+
+                                    for zadanie in zadania_w_kolumnie {
+                                        let item_id = egui::Id::new("task").with(zadanie.id);
+
+                                        // Element przeciągany (Drag Source)
+                                        ui.dnd_drag_source(item_id, zadanie.id, |ui| {
+                                            // Wygląd pojedynczego kafelka zadania
+                                            egui::Frame::group(ui.style())
+                                                .corner_radius(5)
+                                                .fill(egui::Color32::from_rgb(160, 180, 240))
+                                                .inner_margin(8.0)
+                                                .show(ui, |ui| {
+                                                    ui.horizontal(|ui| {
+                                                        ui.label(
+                                                            egui::RichText::new(&zadanie.tresc)
+                                                                .color(egui::Color32::BLACK),
+                                                        );
+                                                        ui.with_layout(
+                                                            egui::Layout::right_to_left(
+                                                                egui::Align::Center,
+                                                            ),
+                                                            |ui| {
+                                                                if ui.small_button("🗑").clicked()
+                                                                {
+                                                                    akcje.push(Akcja::Usun(
+                                                                        zadanie.id,
+                                                                    ));
+                                                                }
+                                                            },
+                                                        );
+                                                    });
+                                                });
+                                        });
+                                        ui.add_space(8.0); // Odstęp między kafelkami
+                                    }
+                                    // Rozpychacz, żeby drop zone działał na całą wysokość kolumny, nawet jak jest pusta
+                                    ui.allocate_space(ui.available_size());
+                                });
+
+                            if let Some(upuszczone_id) = payload {
+                                akcje.push(Akcja::ZmienStatus(*upuszczone_id, *status));
+                            }
+                        });
                 }
             });
+        });
 
-            // --- APLIKOWANIE ZMIAN ---
-            // Dopiero teraz, kiedy UI jest narysowane i nikt nie "pożycza" listy zadań,
-            // możemy ją modyfikować. To jest klucz do Rusta!
-            for akcja in akcje {
-                match akcja {
-                    Akcja::Usun(id_do_usuniecia) => {
-                        // `retain` usuwa elementy, które NIE spełniają warunku (czyli usuwamy pasujące ID)
-                        self.lista_zadan.retain(|z| z.id != id_do_usuniecia);
-                    },
-                    Akcja::ZmienStatus(id, nowy_status) => {
-                        // Szukamy zadania po ID i zmieniamy jego status
-                        if let Some(zadanie) = self.lista_zadan.iter_mut().find(|z| z.id == id) {
-                            zadanie.status = nowy_status;
-                        }
+        // ---------------------------------------------------------
+        // 3. LOGIKA (Aplikowanie zmian)
+        // ---------------------------------------------------------
+        for akcja in akcje {
+            match akcja {
+                Akcja::DodajNowe => {
+                    self.lista_zadan.push(Zadanie {
+                        id: self.next_id,
+                        tresc: self.tresc_zadania.clone(),
+                        status: Status::DoZrobienia,
+                    });
+                    self.next_id += 1;
+                    self.tresc_zadania.clear();
+                }
+                Akcja::Usun(id) => {
+                    self.lista_zadan.retain(|z| z.id != id);
+                }
+                Akcja::ZmienStatus(id, nowy_status) => {
+                    if let Some(z) = self.lista_zadan.iter_mut().find(|z| z.id == id) {
+                        z.status = nowy_status;
                     }
                 }
             }
-        });
+        }
     }
 }
 
@@ -180,7 +209,9 @@ fn main() -> eframe::Result<()> {
     // Konfiguracja kontekstu okna
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([800.0, 600.0]), // Startowy rozmiar okna
+            .with_inner_size([900.0, 600.0]) // Startowy rozmiar okna
+            .with_active(true),
+        //.with_corner_radius(10),
         ..Default::default()
     };
 
